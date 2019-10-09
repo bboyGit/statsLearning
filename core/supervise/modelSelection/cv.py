@@ -10,6 +10,10 @@ def errorRate(y, hat_y):
       hat_y: An array or Series indicating fitted value
     Return: A float indicate error rate.
     """
+    if isinstance(y, np.ndarray) and y.ndim != 1:
+        y = y.ravel()
+    if isinstance(hat_y, np.ndarray) and hat_y.ndim != 1:
+        hat_y = hat_y.ravel()
     confuseMat = pd.crosstab(y, hat_y).values
     right_num = confuseMat.diagonal().sum()
     tot_num = confuseMat.sum()
@@ -62,6 +66,7 @@ def cv(data, m, func, kind, **kwargs):
     for i in range(m):
         start_idx = split_point[i]
         end_idx = split_point[i + 1]
+        # Get train data and validation data
         if end_idx == n:
             validation = data.iloc[start_idx:, :]
             train = data.iloc[: start_idx, :]
@@ -75,7 +80,12 @@ def cv(data, m, func, kind, **kwargs):
         train_y = train.iloc[:, [-1]]
         validation_x = validation.iloc[:, :-1]
         validation_y = validation.iloc[:, [-1]]
+
+        # Fit the given model
         hat = func(train_x, train_y, validation_x, **kwargs)
+
+        # Calculate mean square error for regression method and error rate for classification
+        validation_y = validation_y.values
         if kind == 'regression':
             error = mse(y=validation_y, hat_y=hat)
         elif kind == 'classification':
@@ -93,8 +103,17 @@ if __name__ == "__main__":
     import sklearn.datasets as dataset
     from core.supervise.classification.knn import knn
     breast_cancer = dataset.load_breast_cancer()
-    train = breast_cancer['data'][:500, :]
-    cv(train, 10, 'knn', k=10)                        # 有 Bug -------------------- - -
-
+    X = breast_cancer['data']
+    Y = breast_cancer['target']
+    Y = Y.reshape(len(Y), 1)
+    train = np.concatenate([X, Y], axis=1)
+    result = {}
+    for i in range(3, 35, 1):
+        c = cv(train, 10, 'knn', 'classification', k=i)
+        result[i] = c
+    result = pd.DataFrame(result, index=['error_rate'])
+    result = result.T.reset_index().rename(columns={'index': 'k'})
+    import matplotlib.pyplot as plt
+    plt.plot(result['k'], result['error_rate'])
 
 
