@@ -4,7 +4,7 @@ import numpy as np
 
 def lda(trainX, trainY, testX):
     """
-    Desc: Desc: Classify test set by train set in linear discriminant analysis
+    Desc: Classify test set by train set in linear discriminant analysis
     Parameters:
       trainX: An array or a DataFrame which contains features of train set. Each row represent an observation.
       trainY: An array or a DataFrame which contains response of train set. Each row is an observation.
