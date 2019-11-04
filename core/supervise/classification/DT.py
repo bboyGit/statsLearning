@@ -2,14 +2,11 @@
 import numpy as np
 import pandas as pd
 
-class DT:
+class id3_c45:
     """
-    Desc: It is a decision tree object, which is used to create and trim tree.
+    Desc: Decision tree object, which is used to create ID3 or C4.5 decision tree(a non-parametric supervised method).
     """
-    bf = pd.DataFrame({'agree': [0, 0, 1, 0, 0, 1, 1, 1],
-                       'height': ['low', 'med', 'high', 'high', 'low', 'med', 'med', 'high'],
-                       'weight': ['thin', 'fat', 'med', 'med', 'thin', 'fat', 'thin', 'med'],
-                       'age': [20, 40, 30, 35, 25, 35, 25, 30]})
+    golf = pd.read_csv('d:/lyh/personal_project/statsLearning/data/example_data.csv')
 
     def entropy(self, x):
         """
@@ -35,11 +32,11 @@ class DT:
             log_p.append(np.log2(n/N))
         prob = np.array([prob])
         log_p = np.array([log_p])
-        h = -prob @ log_p.T
-        result = h[0, 0]
+        ent = -prob @ log_p.T
+        result = ent[0, 0]
 
         return result
-    
+
     def cond_entropy(self, y, x):
         """
         Desc: Compute entropy of y conditioning on x. H(Y|X)
@@ -47,5 +44,160 @@ class DT:
         :param x: A series or array whose length is equal to y
         :return: A float indicating conditional entropy.
         """
+        if isinstance(x, pd.Series):
+            x = x.values
+        if isinstance(y, pd.Series):
+            y = y.values
 
-        return
+        # (2) Compute conditional entropy
+        xy = np.concatenate([x.reshape([len(x), 1]), y.reshape([len(y), 1])], axis=1)
+        uniq = np.unique(x)
+        N = len(x)
+        prob_x = []
+        ent = []
+        for i in uniq:
+            xy_i = xy[x == i, :]
+            n = xy_i.shape[0]
+            prob_x.append(n/N)
+            y_i = xy_i[:, -1]
+            ent_i = self.entropy(y_i)
+            ent.append(ent_i)
+        prob_x = np.array([prob_x])
+        ent = np.array([ent])
+        cond_ent = prob_x @ ent.T
+        cond_ent = cond_ent[0, 0]
+
+        return cond_ent
+
+    def mutual_info(self, y, x):
+        """
+        Desc: Compute mutual infomation(information gain). g(y, x) = H(y) - H(y|x)
+        :param y: A series or array
+        :param x: A series or array whose length is equal to y
+        :return: A float indicating mutual info
+        """
+        ent_y = self.entropy(y)
+        cond_ent = self.cond_entropy(y, x)
+        info_gain = ent_y - cond_ent
+
+        return info_gain
+
+    def mutual_info_ratio(self, y, x):
+        """
+        Desc: Compute information gain ratio. g(y, x)/H(x)
+        :param y: A series or array
+        :param x: A series or array whose length is equal to y
+        :return: A float indicating mutual info ratio
+        """
+        info_gain = self.mutual_info(y, x)
+        ent_x = self.entropy(x)
+        info_gain_ratio = info_gain/ent_x
+
+        return info_gain_ratio
+
+    def split_point(self, y, x):
+        """
+        Desc: This method is used to deal with continuous variable
+        :param y: A series or array
+        :param x: A series or array whose length is equal to y
+        :return: A float indicating split point of x
+        """
+        order_x = x.sort_values().values
+        n = len(order_x) - 1
+        T = np.round([(order_x[i] + order_x[i + 1])/2 for i in range(n)], 2)
+        info_gain = {i: None for i in T}
+        for point in T:
+            x_ = x.values.copy()
+            x_[x_ < point] = 0
+            x_[x_ >= point] = 1
+            info_gain[point] = self.mutual_info(y, x_)
+        info_gain = pd.DataFrame(info_gain, index=['info_gain']).T
+        optimal_point = info_gain.idxmax()['info_gain']
+        x = ['< {}'.format(optimal_point) if i < optimal_point else ">= {}".format(optimal_point) for i in x.values]
+        x = pd.Series(x)
+
+        return x
+
+    def generate(self, data, thresh, response, method):
+        """
+        Desc: Generate id3 decision tree recursively
+        :param data: A dataframe containing features and response
+        :param thresh: A float indicating minimum threshold of information gain
+        :param response: A str representing name of response
+        :param method: A str, ID3 or C45.
+        :return: A dict indicating the framework of tree.
+        """
+        # (1) Determine classification method
+        if method == 'id3':
+            fun = self.mutual_info
+        elif method == 'c45':
+            fun = self.mutual_info_ratio
+        # (2) Recursively generate tree
+        data = data.copy()
+        Y = data[[response]]
+        X = data.drop(response, axis=1)
+        n = X.shape[1] if isinstance(X, pd.DataFrame) else 1
+        uniq = np.unique(Y.values)
+        K = len(uniq)
+
+        if K == 1:
+            return uniq[0]
+        elif n == 0:
+            max_y = Y.reset_index().groupby(response).count().idxmax()['index']
+            return max_y
+        else:
+            info_gain = {}
+            x = {}
+            for feature in X.columns:
+                x_i = X[feature]
+                if isinstance(x_i.iloc[0], str):
+                    # Discrete variable
+                    info_gain[feature] = fun(Y.values, x_i)
+                else:
+                    # Deal with continuous variable
+                    x_i = self.split_point(Y.values, x_i)
+                    x[feature] = x_i
+                    info_gain[feature] = fun(Y.values, x_i)
+
+            info_gain = pd.DataFrame(info_gain, index=['info_gain']).T
+            curr_node_name = info_gain.idxmax()['info_gain']
+            X[curr_node_name] = x[curr_node_name].copy()
+            info_gain_max = info_gain.max()['info_gain']
+
+            if info_gain_max < thresh:
+                max_y = Y.reset_index().groupby(response).count().idxmax()['index']
+                return max_y
+            else:
+                feature = X.loc[:, curr_node_name].unique()
+                result = {(curr_node_name, val): None for val in feature}
+                data_ = pd.concat([Y, X], axis=1)
+                for val in feature:
+                    data_i = data_.loc[data_[curr_node_name] == val, :].copy()
+                    data_i.drop(curr_node_name, axis=True, inplace=True)
+                    result[(curr_node_name, val)] = self.generate(data_i, thresh, response, method)
+                return result
+
+
+if __name__ == "__main__":
+    dt = id3_c45()
+    golf = dt.golf.copy()
+    dt.entropy(golf['play'])
+    dt.cond_entropy(golf['play'], golf['temp'])
+    dt.mutual_info(golf['play'], golf['temp'])
+    # id3 = dt.generate(golf, thresh=0.001, response='play', method='id3')
+    # c45 = dt.generate(golf, thresh=0.001, response='play', method='c45')
+
+    from sklearn import tree
+    import sklearn.datasets as dataset
+
+    breast_cancer = dataset.load_breast_cancer()
+    train_x = breast_cancer['data'][:500, :3]
+    train_x = pd.DataFrame(train_x, columns=breast_cancer.feature_names[:3])
+    train_y = breast_cancer['target'][:500].reshape([500, 1])
+    train_y = pd.DataFrame(train_y, columns=['cancer'])
+    train = pd.concat([train_y, train_x], axis=1)
+    id3_ = dt.generate(train, thresh=0.001, response='cancer', method='id3')
+
+    # clf = tree.DecisionTreeClassifier(criterion='entropy')
+    # fit = clf.fit(train_x, train_y)
+    # tree.plot_tree(fit)
