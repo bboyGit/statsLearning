@@ -6,7 +6,6 @@ class id3_c45:
     """
     Desc: Decision tree object, which is used to create ID3 or C4.5 decision tree(a non-parametric supervised method).
     """
-    golf = pd.read_csv('d:/lyh/personal_project/statsLearning/data/example_data.csv')
 
     def entropy(self, x):
         """
@@ -118,6 +117,34 @@ class id3_c45:
 
         return x
 
+    def feature_select(self, Y, X, fun):
+        """
+        Desc: It's a feature selection method used to select feature in X by criterion fun.
+        :param Y: A series
+        :param X: A dataframe
+        :param fun: A function object, self.mutual_info or self.mutual_info_ratio
+        :return: A tuple
+        """
+        info_gain = {}
+        x = {}
+        for feature in X.columns:
+            x_i = X[feature]
+            if isinstance(x_i.iloc[0], str):
+                # Discrete variable
+                info_gain[feature] = fun(Y.values, x_i)
+            else:
+                # Deal with continuous variable
+                x_i = self.split_point(Y.values, x_i)
+                info_gain[feature] = fun(Y.values, x_i)
+            x[feature] = x_i
+
+        info_gain = pd.DataFrame(info_gain, index=['info_gain']).T
+        curr_node_name = info_gain.idxmax()['info_gain']
+        X[curr_node_name] = x[curr_node_name].copy()
+        info_gain_max = info_gain.max()['info_gain']
+
+        return X, curr_node_name, info_gain_max
+
     def generate(self, data, thresh, response, method):
         """
         Desc: Generate id3 decision tree recursively
@@ -134,6 +161,7 @@ class id3_c45:
             fun = self.mutual_info_ratio
         # (2) Recursively generate tree
         data = data.copy()
+        data.reset_index(drop=True, inplace=True)
         Y = data[[response]]
         X = data.drop(response, axis=1)
         n = X.shape[1] if isinstance(X, pd.DataFrame) else 1
@@ -146,24 +174,7 @@ class id3_c45:
             max_y = Y.reset_index().groupby(response).count().idxmax()['index']
             return max_y
         else:
-            info_gain = {}
-            x = {}
-            for feature in X.columns:
-                x_i = X[feature]
-                if isinstance(x_i.iloc[0], str):
-                    # Discrete variable
-                    info_gain[feature] = fun(Y.values, x_i)
-                else:
-                    # Deal with continuous variable
-                    x_i = self.split_point(Y.values, x_i)
-                    x[feature] = x_i
-                    info_gain[feature] = fun(Y.values, x_i)
-
-            info_gain = pd.DataFrame(info_gain, index=['info_gain']).T
-            curr_node_name = info_gain.idxmax()['info_gain']
-            X[curr_node_name] = x[curr_node_name].copy()
-            info_gain_max = info_gain.max()['info_gain']
-
+            X, curr_node_name, info_gain_max = self.feature_select(Y, X, fun)
             if info_gain_max < thresh:
                 max_y = Y.reset_index().groupby(response).count().idxmax()['index']
                 return max_y
@@ -179,14 +190,8 @@ class id3_c45:
 
 
 if __name__ == "__main__":
-    dt = id3_c45()
-    golf = dt.golf.copy()
-    dt.entropy(golf['play'])
-    dt.cond_entropy(golf['play'], golf['temp'])
-    dt.mutual_info(golf['play'], golf['temp'])
-    # id3 = dt.generate(golf, thresh=0.001, response='play', method='id3')
-    # c45 = dt.generate(golf, thresh=0.001, response='play', method='c45')
 
+    dt = id3_c45()
     from sklearn import tree
     import sklearn.datasets as dataset
 
