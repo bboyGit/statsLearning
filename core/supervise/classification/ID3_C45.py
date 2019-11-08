@@ -111,8 +111,8 @@ class id3_c45:
         info_gain = {i: None for i in T}
         for point in T:
             x_ = x.values.copy()
-            x_[x_ < point] = 0
-            x_[x_ >= point] = 1
+            x_[x < point] = 0
+            x_[x >= point] = 1
             info_gain[point] = self.mutual_info(y, x_)
         info_gain = pd.DataFrame(info_gain, index=['info_gain']).T
         optimal_point = info_gain.idxmax()['info_gain']
@@ -132,14 +132,14 @@ class id3_c45:
         info_gain = {}
         x = {}
         for feature in X.columns:
-            x_i = X[feature]
+            x_i = X[feature].copy()
             if isinstance(x_i.iloc[0], str):
                 # Discrete variable
-                info_gain[feature] = fun(Y.values, x_i)
+                info_gain[feature] = fun(Y, x_i)
             else:
                 # Deal with continuous variable
-                x_i = self.split_point(Y.values, x_i)
-                info_gain[feature] = fun(Y.values, x_i)
+                x_i = self.split_point(Y, x_i)
+                info_gain[feature] = fun(Y, x_i)
             x[feature] = x_i
 
         info_gain = pd.DataFrame(info_gain, index=['info_gain']).T
@@ -168,17 +168,17 @@ class id3_c45:
         data.reset_index(drop=True, inplace=True)
         Y = data[[response]]
         X = data.drop(response, axis=1)
-        n = X.shape[1] if isinstance(X, pd.DataFrame) else 1
+        num_feature = X.shape[1]
         uniq = np.unique(Y.values)
         K = len(uniq)
 
         if K == 1:
             return uniq[0]
-        elif n == 0:
+        elif num_feature == 0:
             max_y = Y.reset_index().groupby(response).count().idxmax()['index']
             return max_y
         else:
-            X, curr_node_name, info_gain_max = self.feature_select(Y, X, fun)
+            X, curr_node_name, info_gain_max = self.feature_select(Y.values, X, fun)
             if info_gain_max < thresh:
                 max_y = Y.reset_index().groupby(response).count().idxmax()['index']
                 return max_y
@@ -188,7 +188,7 @@ class id3_c45:
                 data_ = pd.concat([Y, X], axis=1)
                 for val in feature:
                     data_i = data_.loc[data_[curr_node_name] == val, :].copy()
-                    data_i.drop(curr_node_name, axis=True, inplace=True)
+                    data_i.drop(curr_node_name, axis=1, inplace=True)
                     ent_i = self.entropy(data_i[response])
                     result[(curr_node_name, val)] = ent_i, self.generate(data_i, thresh, response, method)
                 return result
@@ -212,7 +212,7 @@ class id3_c45:
                 self.print_tree(j[-1], tap+"   ")
             else:
                 print(tap + '   ', 'Class: ', j[-1], ' ent: ', round(j[0], 4))
-        return
+
 
 if __name__ == "__main__":
 
@@ -220,8 +220,8 @@ if __name__ == "__main__":
     import sklearn.datasets as dataset
 
     breast_cancer = dataset.load_breast_cancer()
-    train_x = breast_cancer['data'][:500, :]
-    train_x = pd.DataFrame(train_x, columns=breast_cancer.feature_names[:])
+    train_x = breast_cancer['data'][:500, :5]
+    train_x = pd.DataFrame(train_x, columns=breast_cancer.feature_names[:5])
     train_y = breast_cancer['target'][:500].reshape([500, 1])
     train_y = pd.DataFrame(train_y, columns=['cancer'])
     train = pd.concat([train_y, train_x], axis=1)
