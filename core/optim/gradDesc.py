@@ -8,7 +8,7 @@ def grad(f, x, delta):
       f: A function
       x: A columns vector representing vector of x
       delta: A float indicating delta of x
-    Return: A vector containing partial derivatives of each elements
+    Return: A column vector containing partial derivatives of each elements
     """
     grad_vector = []
     fun = f(x)
@@ -17,8 +17,7 @@ def grad(f, x, delta):
         x1[i, :] = j + delta
         fun1 = f(x1)
         partial_deriv = (fun1 - fun)/delta
-        grad_vector.append(partial_deriv[0, 0])
-
+        grad_vector.append(partial_deriv)
     grad_vector = np.array([grad_vector]).T
     return grad_vector
 
@@ -26,8 +25,8 @@ def grad_desc(func, x0, tol, max_iter, alpha):
     """
     Desc: Execute Gradient descent algorithm to find local optimal solution of a given function
     Parameters:
-      func: A function
-      x0: initial guess
+      func: A function whose return value is a scalar
+      x0: initial guess(columns vector)
       tol: tolerance
       max_iter: max iteration times
       alpha: A positive number (learning rate)
@@ -38,10 +37,10 @@ def grad_desc(func, x0, tol, max_iter, alpha):
     x_now = x0.copy()
     fun = []
     while count < max_iter and diff > tol:
-        gradient = grad(f=func, x=x_now, delta=10**(-4))
-        diff = np.sum(np.abs(alpha * gradient))
-        x_now = x_now - alpha * gradient
-        fun.append(f(x_now)[0, 0])
+        gradient = grad(f=func, x=x_now, delta=10**(-4))          # Compute gradient of given function in point x_now
+        diff = np.sum(np.abs(gradient)) * alpha
+        x_now = x_now - alpha * gradient                          # update point in minus gradient direction
+        fun.append(func(x_now))
         count += 1
 
     result = {'fun': fun, 'x': x_now, 'iter_num': count}
@@ -57,8 +56,9 @@ if __name__ == '__main__':
                   [0.19, 0.89, 0.87, 0.5],
                   [0.8, 1.7, 1, 0.6],
                   [0.56, 0.77, 0.4, 0.77]])
-    f = lambda x: np.dot((y - X @ x).T, y - X @ x)
-    grad(f, x=np.array([[1, 2.4, 3, 4]], dtype=float).T, delta=0.0001)
-    solution = grad_desc(f, np.array([[0, 0, 0, 0]], dtype=float).T, tol=10**(-4), max_iter=10**4, alpha=0.05)
+    f = lambda x: np.dot((y - X @ x).T, y - X @ x)[0, 0]
+    grad(f, x=np.array([[1, 2.4, 3, 4]], dtype=float).T, delta=0.001)
+    solution = grad_desc(f, np.array([[0, 0, 0, 0]], dtype=float).T, tol=10**(-6), max_iter=3 * 10**4, alpha=0.01)
+    solution['x'].ravel()
     import statsmodels.api as sm
-    sm.OLS(y, X).fit().summary()
+    sm.OLS(y, X).fit().params
