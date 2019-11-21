@@ -116,7 +116,7 @@ class logistic:
         coef = opt['x']
         iter_num = opt['iter_num']
         loss_val = opt['fun'][-1]
-        fit_val = np.exp(x @ coef)/np.sum(np.exp(x @ coef), axis=1)
+        fit_val = np.exp(x @ coef)/np.sum(np.exp(x @ coef), axis=1).reshape(-1, 1)
         return coef, iter_num, loss_val, fit_val
 
     def fit(self, method=None):
