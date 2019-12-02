@@ -2,7 +2,7 @@
 import numpy as np
 import pandas as pd
 from core.normalize import normalize
-from core.optim.gradDesc import grad_desc
+from core.optim import optimize
 from core.add_const import add_const
 
 class logistic:
@@ -44,10 +44,11 @@ class logistic:
         loss2 = lambda w: ((1 - y.T) @ np.log(1 - sigmoid(x @ w)))[0, 0]
         loss = lambda w: -(loss1(w) + loss2(w))/N
         # (2) use gradient descent to find optimal coefficient
-        opt = grad_desc(loss, self.x0, tol=self.tol, max_iter=self.max_iter, alpha=self.alpha)
+        optim = optimize()
+        opt = optim.grad_desc(loss, self.x0, self.tol, self.max_iter, self.alpha, delta=10**(-5))
         coef = opt['x']
         iter_num = opt['iter_num']
-        loss_val = opt['fun'][-1]
+        loss_val = opt['fun']
         fit_val = sigmoid(x @ coef)
         return coef, iter_num, loss_val, fit_val
 
@@ -104,6 +105,7 @@ class logistic:
     def __softmax(self, x, y, y_uniq):
         """
         Desc: Fit multi-class logistic regression by softmax function
+        Note: 目前softmax只用梯度下降来做，之后再考虑牛顿迭代法。
         """
         # (1) create loss function
         N, n = x.shape
@@ -112,11 +114,13 @@ class logistic:
         softmax = lambda x_i, _w, y_i: np.exp(x_i @ _w[:, [y_i]])/np.exp(x_i @ _w).sum()     # z is x@w(a N by K matrix)
         loss = lambda w: -np.sum([np.log(softmax(x[[i], :], w, y[i, 0])) for i in range(N)])/N
         # (2) find optimal coefficient by gradient descent
-        opt = grad_desc(loss, x0, self.tol, self.max_iter, self.alpha)
-        coef = opt['x']
-        iter_num = opt['iter_num']
-        loss_val = opt['fun'][-1]
+        optim = optimize()
+        opt = optim.grad_desc(loss, x0, self.tol, self.max_iter, self.alpha, delta=10**(-5))
+        coef = opt['x']                                   # 系数
+        iter_num = opt['iter_num']                        # 迭代次数
+        loss_val = opt['fun']                             # 损失函数值
         fit_val = np.exp(x @ coef)/np.sum(np.exp(x @ coef), axis=1).reshape(-1, 1)
+        fit_val = fit_val.round(4)                        # 函数值
         return coef, iter_num, loss_val, fit_val
 
     def fit(self, method=None):
@@ -150,8 +154,8 @@ if __name__=='__main__':
     y = digit['target']
     y = y.reshape(len(y), 1)
     start = datetime.now()
-    logit1 = logistic(x=x, y=y, tol=10**(-5), max_iter=20, alpha=10**(-1), x0=None)
-    result1 = logit1.fit('softmax')
+    logit = logistic(x=x, y=y, tol=10**(-5), max_iter=100, alpha=10**(-1), x0=None)
+    result = logit.fit('IIA')
     end = datetime.now()
     fit = linear_model.LogisticRegression(fit_intercept=True,
                                           solver='newton-cg', penalty='none').fit(x, y.ravel())
