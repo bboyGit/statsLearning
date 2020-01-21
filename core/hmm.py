@@ -33,7 +33,7 @@ class HMM(object):
         for t in range(T):
             obs_t_idx = np.where(self.obs[t] == self.obs_space)[0][0]
             for i in range(N):
-                if i == 0:
+                if t == 0:
                     alpha[t, i] = prob[i] * emit[i, obs_t_idx]
                 else:
                     alpha[t, i] = emit[i, obs_t_idx] * np.sum([alpha[t-1, j] * trans[j, i] for j in range(N)])
@@ -41,24 +41,23 @@ class HMM(object):
         result = {'alpha': alpha, 'p_obs_param': p_obs_param}
         return result
 
-    def __calcu_obs_backward(self, trans, emit):
+    def __calcu_obs_backward(self, trans, emit, prob):
         """
         Desc: Compute P(O|trans, emit, prob) by backward algorithm
         :return: T*N matrix
         """
         T = len(self.obs)                 # length of observation
         N = self.n                        # number of states
-        beta = np.empty(shape=[T-1, N])
+        beta = np.zeros(shape=[T, N])
         for t in range(T-1, -1, -1):
             obs_t_idx = np.where(self.obs[t] == self.obs_space)[0][0]
-            for i in range(N):
-                if t == T-1:
-                    beta[t, :] = 1
-                    break
-                else:
-                    obs_t1_idx = np.where(self.obs[t+1] == self.obs_space)[0][0]
-                    beta[t, i] = np.sum(beta[t+1, :] * emit[:, obs_t1_idx] * trans[i, :])
-        p_obs_param = np.sum(beta[0, :] * emit[:, obs_t_idx])
+            if t == T - 1:
+                beta[t, :] = 1
+            else:
+                obs_t1_idx = np.where(self.obs[t + 1] == self.obs_space)[0][0]
+                for i in range(N):
+                    beta[t, i] = np.sum(beta[t + 1, :] * emit[:, obs_t1_idx] * trans[i, :])
+        p_obs_param = np.sum(beta[0, :] * emit[:, obs_t_idx] * prob)
         result = {'beta': beta, 'p_obs_param': p_obs_param}
         return result
 
@@ -71,7 +70,7 @@ class HMM(object):
         if method == 'forward':
             result = self.__calcu_obs_forward(trans, emit, prob)
         elif method == 'backward':
-            result = self.__calcu_obs_backward(trans, emit)
+            result = self.__calcu_obs_backward(trans, emit, prob)
         else:
             raise Exception('Only support for forward or backward algorithm')
         return result
@@ -83,7 +82,7 @@ class HMM(object):
         """
         T = len(self.obs)  # length of observation
         N = self.n  # number of states
-        y = np.empty(shape=[T-1, N, N])
+        y = np.zeros(shape=[T-1, N, N])
         for t in range(T-1):
             obs_t1_idx = np.where(self.obs[t+1] == self.obs_space)[0][0]
             for i in range(N):
@@ -108,7 +107,7 @@ class HMM(object):
         for n in range(self.iter_num):
             # (2.1) calculate P(i(t) = q_i|O, trans, emit, prob) and P(i(t) = q_i, i(t+1) = q_j|O, trans, emit, prob)
             alpha_result = self.__calcu_obs_forward(trans, emit, prob)
-            beta_result = self.__calcu_obs_backward(trans, emit)
+            beta_result = self.__calcu_obs_backward(trans, emit, prob)
             alpha = alpha_result['alpha']                                           # forward probability matrix
             beta = beta_result['beta']                                              # backward probability matrix
             r = (alpha * beta) / np.sum(alpha * beta, axis=1).reshape(T, 1)         # P(i(t) = q_i|O, trans, emit, prob)
@@ -117,12 +116,13 @@ class HMM(object):
             prob = r[0, :]
             # (2.3) update trans and emit
             for i in range(N):
-                for j in range(N):
-                    trans[i, j] = y[:, i, j].sum()/r[:-1, i].sum()
-                for j in range(M):
-                    emit[i, j] = np.sum([r[t, i] * (self.obs[t] == self.obs_space[j]) for t in range(T)])/r[:, i].sum()
+                for j in range(max(N, M)):
+                    if j < N:
+                        trans[i, j] = y[:, i, j].sum()/r[:-1, i].sum()
+                    if j < M:
+                        emit[i, j] = np.sum([r[t, i] * (self.obs[t] == self.obs_space[j]) for t in range(T)])/r[:, i].sum()
         # (3) tidy result
-        result = {'trans': trans, 'emit': emit, 'initial_prob': prob}
+        result = {'trans': trans, 'emit': emit, 'prob': prob}
         return result
 
     def generate_obs(self, trans=None, emit=None, prob=None, length: int = 10):
@@ -167,7 +167,7 @@ class HMM(object):
             r = (alpha * beta) / np.sum(alpha * beta, axis=1).reshape(T, 1)    # P(i(t) = q_i|O, trans, emit, prob)
             I_hat = np.array([r[t, :].argmax() for t in range(T)])
         elif method == 'viterbi':
-            p_max_until = np.empty([T, N])   # max P(i(t) = i, i1,...,i(t-1), o1,...ot|trans, emit, prob) by i1...i(t-1)
+            p_max_until = np.zeros([T, N])   # max P(i(t) = i, i1,...,i(t-1), o1,...ot|trans, emit, prob) by i1...i(t-1)
             # (1) Derive the max probability of P(O, I|trans, emit, prob) and the corresponding finally state
             for t in range(T):
                 obs_t_idx = np.where(self.obs[t] == self.obs_space)[0][0]
@@ -184,9 +184,9 @@ class HMM(object):
                 i_t_plus1 = I_hat[-1]
                 i_t = np.argmax(p_max_until[t-1, :] * trans[:, i_t_plus1])
                 I_hat.append(i_t)
+            I_hat = np.array(I_hat)[::-1]
         else:
             raise Exception('method could only be viterbi or similarity')
+
         return I_hat
-
-
 
